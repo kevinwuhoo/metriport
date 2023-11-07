@@ -6,10 +6,9 @@ import { capture } from "../../../shared/notifications";
 import { Util } from "../../../shared/util";
 import { getSettingsOrFail } from "../../settings/getSettings";
 import { reportUsage as reportUsageCmd } from "../../usage/report-usage";
-import { processRequest, WebhookMetadataPayload, isWebhookDisabled } from "../../webhook/webhook";
+import { processRequest, WebhookMetadataPayload } from "../../webhook/webhook";
 import { createWebhookRequest } from "../../webhook/webhook-request";
 import { updateConsolidatedQueryProgress } from "./append-consolidated-query-progress";
-import { getPatientOrFail } from "./get-patient";
 
 const log = Util.log(`Consolidated Webhook`);
 
@@ -51,43 +50,27 @@ export const processConsolidatedDataWebhook = async ({
   const apiType = Product.medical;
   const { id: patientId, cxId } = patient;
   try {
-    const [settings, currentPatient] = await Promise.all([
-      getSettingsOrFail({ id: cxId }),
-      getPatientOrFail({ id: patientId, cxId }),
-    ]);
+    const settings = await getSettingsOrFail({ id: cxId });
 
     // create a representation of this request and store on the DB
     const payload: PayloadWithoutMeta = {
       patients: [{ patientId, status, bundle, filters }],
     };
-
+    const webhookRequest = await createWebhookRequest({
+      cxId,
+      type: "medical.consolidated-data",
+      payload,
+    });
     // send it to the customer and update the WH request status
-
-    if (!isWebhookDisabled(currentPatient.data.cxConsolidatedRequestMetadata)) {
-      const webhookRequest = await createWebhookRequest({
-        cxId,
-        type: "medical.consolidated-data",
-        payload,
-      });
-
-      await processRequest(
-        webhookRequest,
-        settings,
-        bundle
-          ? {
-              bundleLength: optionalToString(bundle.entry?.length ?? bundle.total) ?? "unknown",
-            }
-          : undefined,
-        currentPatient.data.cxConsolidatedRequestMetadata
-      );
-    } else {
-      await createWebhookRequest({
-        cxId,
-        type: "medical.consolidated-data",
-        payload,
-        status: "success",
-      });
-    }
+    await processRequest(
+      webhookRequest,
+      settings,
+      bundle
+        ? {
+            bundleLength: optionalToString(bundle.entry?.length ?? bundle.total) ?? "unknown",
+          }
+        : undefined
+    );
 
     await updateConsolidatedQueryProgress({
       patient,

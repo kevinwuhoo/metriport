@@ -4,9 +4,8 @@ import { DocumentReferenceDTO } from "../../../routes/medical/dtos/documentDTO";
 import { capture } from "../../../shared/notifications";
 import { Util } from "../../../shared/util";
 import { getSettingsOrFail } from "../../settings/getSettings";
-import { getPatientOrFail } from "../patient/get-patient";
 import { reportUsage as reportUsageCmd } from "../../usage/report-usage";
-import { processRequest, WebhookMetadataPayload, isWebhookDisabled } from "../../webhook/webhook";
+import { processRequest, WebhookMetadataPayload } from "../../webhook/webhook";
 import { createWebhookRequest } from "../../webhook/webhook-request";
 
 const log = Util.log(`Document Webhook`);
@@ -43,36 +42,14 @@ export const processPatientDocumentRequest = async (
   documents?: DocumentReferenceDTO[]
 ): Promise<void> => {
   try {
-    const [settings, patient] = await Promise.all([
-      getSettingsOrFail({ id: cxId }),
-      getPatientOrFail({ id: patientId, cxId }),
-    ]);
-
+    const settings = await getSettingsOrFail({ id: cxId });
     // create a representation of this request and store on the DB
     const payload: WebhookPatientDataPayloadWithoutMessageId = {
       patients: [{ patientId, documents, status }],
     };
+    const webhookRequest = await createWebhookRequest({ cxId, type: whType, payload });
     // send it to the customer and update the request status
-    if (!isWebhookDisabled(patient.data.cxDocumentRequestMetadata)) {
-      const webhookRequest = await createWebhookRequest({
-        cxId,
-        type: whType,
-        payload,
-      });
-      await processRequest(
-        webhookRequest,
-        settings,
-        undefined,
-        patient.data.cxDocumentRequestMetadata
-      );
-    } else {
-      await createWebhookRequest({
-        cxId,
-        type: whType,
-        payload,
-        status: "success",
-      });
-    }
+    await processRequest(webhookRequest, settings);
 
     reportUsageCmd({ cxId, entityId: patientId, product: Product.medical });
   } catch (err) {

@@ -24,8 +24,6 @@ import { asyncHandler, getCxIdOrFail, getFrom, getFromQueryOrFail } from "../uti
 import { toDTO } from "./dtos/documentDTO";
 import { docConversionTypeSchema, docFileNameSchema } from "./schemas/documents";
 
-import { cxRequestMetadataSchema } from "./schemas/request-metadata";
-
 const router = Router();
 const region = Config.getAWSRegion();
 const s3Utils = new S3Utils(region);
@@ -101,7 +99,6 @@ router.get(
  * @param req.query.patientId Patient ID for which to retrieve document metadata.
  * @param req.query.facilityId The facility providing NPI for the document query.
  * @param req.query.override Whether to override files already downloaded (optional, defaults to false).
- * @param req.body Optional metadata to be sent through Webhook.
  * @return The status of document querying.
  */
 router.post(
@@ -111,14 +108,12 @@ router.post(
     const patientId = getFromQueryOrFail("patientId", req);
     const facilityId = getFrom("query").optional("facilityId", req);
     const override = stringToBoolean(getFrom("query").optional("override", req));
-    const cxDocumentRequestMetadata = cxRequestMetadataSchema.parse(req.body);
 
     const docQueryProgress = await queryDocumentsAcrossHIEs({
       cxId,
       patientId,
       facilityId,
       override,
-      cxDocumentRequestMetadata: cxDocumentRequestMetadata?.metadata,
     });
 
     return res.status(OK).json(docQueryProgress);

@@ -7,7 +7,6 @@ export type CreateWebhookRequestCommand = {
   cxId: string;
   type: WebhookType;
   payload: object;
-  status?: WebhookRequestStatus;
 };
 
 export const createWebhookRequest = async (
@@ -16,7 +15,7 @@ export const createWebhookRequest = async (
   return WebhookRequest.create({
     ...create,
     id: uuidv4(),
-    status: create.status ? create.status : "processing",
+    status: "processing",
   });
 };
 

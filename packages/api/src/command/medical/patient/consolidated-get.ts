@@ -20,11 +20,11 @@ import {
   getPatientFilter,
 } from "../../../external/fhir/patient/resource-filter";
 import { capture } from "../../../shared/notifications";
-import { Util, emptyFunction } from "../../../shared/util";
+import { emptyFunction, Util } from "../../../shared/util";
+import { updateConsolidatedQueryProgress } from "./append-consolidated-query-progress";
 import { processConsolidatedDataWebhook } from "./consolidated-webhook";
 import { handleBundleToMedicalRecord } from "./convert-fhir-bundle";
 import { getPatientOrFail } from "./get-patient";
-import { storeQueryInit } from "./query-init";
 
 export async function startConsolidatedQuery({
   cxId,
@@ -33,7 +33,6 @@ export async function startConsolidatedQuery({
   dateFrom,
   dateTo,
   conversionType,
-  cxConsolidatedRequestMetadata,
 }: {
   cxId: string;
   patientId: string;
@@ -41,7 +40,6 @@ export async function startConsolidatedQuery({
   dateFrom?: string;
   dateTo?: string;
   conversionType?: ConsolidationConversionType;
-  cxConsolidatedRequestMetadata?: unknown;
 }): Promise<QueryProgress> {
   const { log } = Util.out(`queryDocumentsAcrossHIEs - M patient ${patientId}`);
   const patient = await getPatientOrFail({ id: patientId, cxId });
@@ -51,21 +49,14 @@ export async function startConsolidatedQuery({
   }
 
   const progress: QueryProgress = { status: "processing" };
-
-  const updatedPatient = await storeQueryInit({
-    id: patient.id,
-    cxId: patient.cxId,
-    consolidatedQuery: progress,
-    cxConsolidatedRequestMetadata,
+  await updateConsolidatedQueryProgress({
+    patient,
+    progress,
+    reset: true,
   });
-
-  getConsolidatedAndSendToCx({
-    patient: updatedPatient,
-    resources,
-    dateFrom,
-    dateTo,
-    conversionType,
-  }).catch(emptyFunction);
+  getConsolidatedAndSendToCx({ patient, resources, dateFrom, dateTo, conversionType }).catch(
+    emptyFunction
+  );
   return progress;
 }
 
