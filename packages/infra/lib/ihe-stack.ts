@@ -3,11 +3,13 @@ import * as apig from "aws-cdk-lib/aws-apigateway";
 import * as cert from "aws-cdk-lib/aws-certificatemanager";
 import { SnsAction } from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import { Function as Lambda } from "aws-cdk-lib/aws-lambda";
 import * as r53 from "aws-cdk-lib/aws-route53";
 import * as r53_targets from "aws-cdk-lib/aws-route53-targets";
 import * as sns from "aws-cdk-lib/aws-sns";
 import { Construct } from "constructs";
 import { EnvConfig } from "../config/env-config";
+import { createIHEGateway } from "./ihe-stack/ihe-gateway";
 import { createLambda } from "./shared/lambda";
 import { LambdaLayers, setupLambdasLayers } from "./shared/lambda-layers";
 
@@ -46,6 +48,10 @@ export class IHEStack extends Stack {
         allowHeaders: ["*"],
       },
     });
+
+    // TODO 1377 Setup WAF
+    // TODO 1377 Setup WAF
+    // TODO 1377 Setup WAF
 
     // get the certificate form ACM
     const certificate = cert.Certificate.fromCertificateArn(
@@ -93,14 +99,35 @@ export class IHEStack extends Stack {
       },
     });
 
-    // Create lambdas
-    const xcaResource = api.root.addResource("xca");
-    const xcpdResource = api.root.addResource("xcpd");
+    const documentQueryLambda = this.setupDocumentQueryLambda(
+      props,
+      lambdaLayers,
+      vpc,
+      alarmSnsAction
+    );
+    const documentRetrievalLambda = this.setupDocumentRetrievalLambda(
+      props,
+      lambdaLayers,
+      vpc,
+      alarmSnsAction
+    );
+    const patientDiscoveryLambda = this.setupPatientDiscoveryLambda(
+      props,
+      lambdaLayers,
+      vpc,
+      alarmSnsAction
+    );
 
-    // TODO 1377 When we have the IHE GW infra in place, let's update these so lambdas get triggered by the IHE GW instead of API GW
-    this.setupDocumentQueryLambda(props, lambdaLayers, xcaResource, vpc, alarmSnsAction);
-    this.setupDocumentRetrievalLambda(props, lambdaLayers, xcaResource, vpc, alarmSnsAction);
-    this.setupPatientDiscoveryLambda(props, lambdaLayers, xcpdResource, vpc, alarmSnsAction);
+    createIHEGateway(this, {
+      ...props,
+      config: props.config,
+      vpc,
+      apiResource: api.root,
+      documentQueryLambda,
+      documentRetrievalLambda,
+      patientDiscoveryLambda,
+      alarmAction: alarmSnsAction,
+    });
 
     //-------------------------------------------
     // Output
@@ -122,10 +149,9 @@ export class IHEStack extends Stack {
   private setupDocumentQueryLambda(
     props: IHEStackProps,
     lambdaLayers: LambdaLayers,
-    xcaResource: apig.Resource,
     vpc: ec2.IVpc,
     alarmSnsAction?: SnsAction | undefined
-  ) {
+  ): Lambda {
     const documentQueryLambda = createLambda({
       stack: this,
       name: "DocumentQuery",
@@ -139,18 +165,15 @@ export class IHEStack extends Stack {
       alarmSnsAction,
       version: props.version,
     });
-
-    const documentQueryResource = xcaResource.addResource("document-query");
-    documentQueryResource.addMethod("ANY", new apig.LambdaIntegration(documentQueryLambda));
+    return documentQueryLambda;
   }
 
   private setupDocumentRetrievalLambda(
     props: IHEStackProps,
     lambdaLayers: LambdaLayers,
-    xcaResource: apig.Resource,
     vpc: ec2.IVpc,
     alarmSnsAction?: SnsAction | undefined
-  ) {
+  ): Lambda {
     const documentRetrievalLambda = createLambda({
       stack: this,
       name: "DocumentRetrieval",
@@ -164,18 +187,15 @@ export class IHEStack extends Stack {
       alarmSnsAction,
       version: props.version,
     });
-
-    const documentRetrievalResource = xcaResource.addResource("document-retrieve");
-    documentRetrievalResource.addMethod("ANY", new apig.LambdaIntegration(documentRetrievalLambda));
+    return documentRetrievalLambda;
   }
 
   private setupPatientDiscoveryLambda(
     props: IHEStackProps,
     lambdaLayers: LambdaLayers,
-    apiResource: apig.Resource,
     vpc: ec2.IVpc,
     alarmSnsAction?: SnsAction | undefined
-  ) {
+  ): Lambda {
     const patientDiscoveryLambda = createLambda({
       stack: this,
       name: "PatientDiscovery",
@@ -190,8 +210,7 @@ export class IHEStack extends Stack {
       alarmSnsAction,
       version: props.version,
     });
-
-    apiResource.addMethod("ANY", new apig.LambdaIntegration(patientDiscoveryLambda));
+    return patientDiscoveryLambda;
   }
 }
 
